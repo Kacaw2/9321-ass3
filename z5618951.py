@@ -7,7 +7,7 @@ warnings.filterwarnings("ignore")
 
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import f1_score, mean_squared_error
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingRegressor
 from sklearn.model_selection import train_test_split
 from imblearn.over_sampling import SMOTE
 
@@ -31,7 +31,10 @@ def clean_and_prepare_data(df):
     df_clean["trans_month"] = df_clean["trans_date_trans_time"].dt.month
     df_clean["trans_day"] = df_clean["trans_date_trans_time"].dt.day
     df_clean["trans_quarter"] = df_clean["trans_date_trans_time"].dt.quarter
-
+    # 新增：周末和夜间标记
+    df_clean["is_weekend"] = df_clean["trans_dayofweek"].isin([5, 6]).astype(int)
+    df_clean["is_night"] = ((df_clean["trans_hour"] >= 22) | (df_clean["trans_hour"] <= 6)).astype(int)
+    
     # 4. 地理距离特征
     def haversine_np(lat1, lon1, lat2, lon2):
         R = 6371.0
@@ -47,6 +50,14 @@ def clean_and_prepare_data(df):
     )
 
     df_clean["distance_log"] = np.log1p(df_clean["customer_merchant_distance_km"])
+
+    df_clean["is_long_distance"] = (df_clean["customer_merchant_distance_km"] > 100).astype(int)
+    
+    # 3. 金额特征
+    df_clean["amt_log"] = np.log1p(df_clean["amt"])
+    # 金额与距离的交互
+    df_clean["amt_per_km"] = df_clean["amt"] / (df_clean["customer_merchant_distance_km"] + 1)
+    
     df_clean["city_pop_log"] = np.log1p(df_clean["city_pop"])
 
     # 删除不需要的列
@@ -105,12 +116,46 @@ def handle_class_imbalance(X_train, y_train, random_state=42):
 
 
 def main():
+    
     if len(sys.argv) != 3:
-        print("Usage: python3 z5618951.py <train_csv> <test_csv>")
-        sys.exit(1)
+      print("Usage: python3 z5618951.py <train_csv> <test_csv>")
+      sys.exit(1)
 
     train_path = sys.argv[1]
     test_path = sys.argv[2]
+
+    # 训练回归模型（用于验证）
+    print("\n训练回归模型 (用于验证)...")
+    reg_params = {
+        'max_iter': 200,
+        'max_depth': 7,
+        'learning_rate': 0.05,
+        'l2_regularization': 0.1,
+        'random_state': 42
+    }
+    
+    model_reg = HistGradientBoostingRegressor(**reg_params)
+
+    print(f"使用参数: {reg_params}")
+    print(f"使用模型: {model_reg}")
+
+    print("=" * 70)
+
+    # 训练分类模型（用于验证）
+    print("\n训练分类模型 (用于验证)...")
+    clf_params = {
+        'n_estimators': 100,
+        'max_depth': 20,
+        'min_samples_split': 5,
+        'class_weight': 'balanced_subsample',
+        'random_state': 42,
+        'n_jobs': -1
+    }
+    
+    model_clf = RandomForestClassifier(**clf_params)
+    
+    print(f"使用参数: {clf_params}")
+    print(f"使用模型: {model_clf}")
 
     print("=" * 70)
     print("Machine Learning Pipeline - Part II & Part III")
@@ -158,42 +203,13 @@ def main():
     print(f"  中位数: ${y_train_reg.median():.2f}")
     print(f"  标准差: ${y_train_reg.std():.2f}")
 
-    # 划分验证集（用于评估）
-    X_train_reg_val, X_val_reg, y_train_reg_val, y_val_reg = train_test_split(
-        X_train_reg, y_train_reg, test_size=0.15, random_state=42
-    )
-    print(f"\n训练子集: {len(X_train_reg_val):,} | 验证集: {len(X_val_reg):,}")
-
-    # 训练回归模型（用于验证）
-    print("\n训练回归模型 (用于验证)...")
-    reg_params = {
-        'n_estimators': 150,
-        'max_depth': 20,
-        'min_samples_split': 5,
-        'random_state': 42,
-        'n_jobs': -1
-    }
-    print(f"使用参数: {reg_params}")
     
-    model_reg = RandomForestRegressor(**reg_params)
-    model_reg.fit(X_train_reg_val, y_train_reg_val)
-    print("✓ 模型训练完成")
-
-    # 验证集评估
-    print("\n验证集评估:")
-    pred_val_reg = model_reg.predict(X_val_reg)
-    rmse = np.sqrt(mean_squared_error(y_val_reg, pred_val_reg))
-    print(f"Validation RMSE: ${rmse:.2f}")
-
-    # 在全量训练数据上重新训练最终模型
-    print("\n在全量训练数据上重新训练...")
-    model_reg_final = RandomForestRegressor(**reg_params)
-    model_reg_final.fit(X_train_reg, y_train_reg)
-    print("✓ 最终回归模型训练完成")
+    model_reg.fit(X_train_reg, y_train_reg)
+    print("✓ 回归模型训练完成")
 
     # 生成测试集预测
     print("\n生成测试集预测...")
-    pred_reg_test = model_reg_final.predict(X_test_reg)
+    pred_reg_test = model_reg.predict(X_test_reg)
     print(f"✓ 预测完成: {len(pred_reg_test):,} 个样本")
     print(f"预测金额统计:")
     print(f"  均值: ${pred_reg_test.mean():.2f}")
@@ -204,8 +220,21 @@ def main():
         "trans_num": test_encoded["trans_num"],
         "amt": pred_reg_test
     })
+
     regression_output.to_csv("z5618951_regression.csv", index=False)
     print(f"\n✓ z5618951_regression.csv ({len(regression_output):,} 行)")
+
+    print("\n" + "=" * 70)
+    print("测试集性能评估 (回归)")
+    print("=" * 70)
+    
+    y_test_reg = test_encoded["amt"]
+    rmse = np.sqrt(mean_squared_error(y_test_reg, pred_reg_test))
+    
+    print(f"Test RMSE: ${rmse:.2f}")
+    print(f"Test 金额统计 (真实):")
+    print(f"  均值: ${y_test_reg.mean():.2f}")
+    print(f"  中位数: ${y_test_reg.median():.2f}")
 
     # ============================================================
     # Part III - 分类任务（检测欺诈 is_fraud）
@@ -214,10 +243,9 @@ def main():
     print("Part III: Classification Task - Fraud Detection")
     print("=" * 70)
 
-    # 准备分类特征（包含 amt，规定允许）
+    # 准备分类特征（包含 amt）
     clf_feature_cols = [
-        col for col in train_encoded.columns 
-        if col not in ["trans_num", "is_fraud"]
+        col for col in train_encoded.columns if col not in ["trans_num", "is_fraud"]
     ]
     
     X_train_clf = train_encoded[clf_feature_cols]
@@ -229,67 +257,19 @@ def main():
     print(f"测试集大小: {len(X_test_clf):,}")
     print(f"原始欺诈样本比例: {y_train_clf.mean()*100:.2f}%")
 
-    # 划分验证集
-    print("\n划分验证集...")
-    X_train_val, X_val, y_train_val, y_val = train_test_split(
-        X_train_clf, y_train_clf, test_size=0.15, random_state=42, stratify=y_train_clf
-    )
-    print(f"训练子集: {len(X_train_val):,} | 验证集: {len(X_val):,}")
-
-    # 处理类别不平衡（只对训练子集）
-    X_train_val_balanced, y_train_val_balanced = handle_class_imbalance(
-        X_train_val, y_train_val, random_state=42
-    )
-
-    # 训练分类模型（用于验证）
-    print("\n训练分类模型 (用于验证)...")
-    clf_params = {
-        'n_estimators': 200,
-        'max_depth': 20,
-        'min_samples_split': 2,
-        'class_weight': 'balanced',
-        'random_state': 42,
-        'n_jobs': -1
-    }
-    print(f"使用参数: {clf_params}")
-    
-    model_clf = RandomForestClassifier(**clf_params)
-    model_clf.fit(X_train_val_balanced, y_train_val_balanced)
-    print("✓ 模型训练完成")
-
-    # 验证集评估
-    print("\n验证集评估:")
-    pred_val = model_clf.predict(X_val)
-    f1_macro = f1_score(y_val, pred_val, average='macro')
-    f1_weighted = f1_score(y_val, pred_val, average='weighted')
-    
-    print(f"Validation F1 Score (Macro): {f1_macro:.4f}")
-    print(f"Validation F1 Score (Weighted): {f1_weighted:.4f}")
-    
-    # 预估得分
-    if f1_macro >= 0.97:
-        score = 5.0
-        print(f"✓ Estimated score: {score:.2f}/5.0 🎉")
-    elif f1_macro >= 0.85:
-        score = ((f1_macro - 0.85) / 0.12) * 5
-        print(f"⚠ Estimated score: {score:.2f}/5.0")
-    else:
-        score = 0.0
-        print(f"✗ Estimated score: {score:.2f}/5.0 (F1 too low)")
-
-    # 在全量训练数据上重新训练最终模型
-    print("\n在全量训练数据上重新训练...")
+    # 处理类别不平衡
     X_train_clf_balanced, y_train_clf_balanced = handle_class_imbalance(
         X_train_clf, y_train_clf, random_state=42
     )
-    
-    model_clf_final = RandomForestClassifier(**clf_params)
-    model_clf_final.fit(X_train_clf_balanced, y_train_clf_balanced)
-    print("✓ 最终分类模型训练完成")
 
-    # 生成测试集预测
+    print("\n训练分类模型...")
+
+    model_clf.fit(X_train_clf_balanced, y_train_clf_balanced )
+    print("✓ 分类模型训练完成")
+
+    # 验证集评估
     print("\n生成测试集预测...")
-    pred_clf_test = model_clf_final.predict(X_test_clf)
+    pred_clf_test = model_clf.predict(X_test_clf)
 
     print(f"✓ 预测完成: {len(pred_clf_test):,} 个样本")
     print(f"  预测为欺诈: {pred_clf_test.sum():,} ({pred_clf_test.mean()*100:.2f}%)")
@@ -303,15 +283,43 @@ def main():
     classification_output.to_csv("z5618951_classification.csv", index=False)
     print(f"\n✓ z5618951_classification.csv ({len(classification_output):,} 行)")
 
+    print("\n" + "=" * 70)
+    print("测试集性能评估")
+    print("=" * 70)
+
+    y_test_clf = test_encoded["is_fraud"]
+    f1_macro = f1_score(y_test_clf, pred_clf_test, average='macro')
+    f1_weighted = f1_score(y_test_clf, pred_clf_test, average='weighted')
+        
+    print(f"Test F1 Score (Macro): {f1_macro:.4f}")
+    print(f"Test F1 Score (Weighted): {f1_weighted:.4f}")
+    print(f"Test 欺诈样本比例 (真实): {y_test_clf.mean()*100:.2f}%")
+        
+    # 预估得分
+    if f1_macro >= 0.97:
+            score = 5.0
+            print(f"✓ Estimated score: {score:.2f}/5.0 🎉")
+    elif f1_macro >= 0.85:
+        score = ((f1_macro - 0.85) / 0.12) * 5
+        print(f"⚠ Estimated score: {score:.2f}/5.0")
+    else:
+        score = 0.0
+        print(f"✗ Estimated score: {score:.2f}/5.0 (F1 too low)")
+
     # ============================================================
     # 最终总结
     # ============================================================
     print("\n" + "=" * 70)
     print("最终总结")
     print("=" * 70)
-    print(f"Part II  - RMSE: ${rmse:.2f}")
+
+    print(f"Part II  - RMSE: {rmse:.2f}")
+
     print(f"Part III - F1 Score (Macro): {f1_macro:.4f}")
+
     print(f"Part III - Estimated Score: {score:.2f}/5.0")
+
+
     print("\n生成的输出文件:")
     print("  1. z5618951_regression.csv")
     print("  2. z5618951_classification.csv")
