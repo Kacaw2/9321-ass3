@@ -133,12 +133,10 @@ def main():
         'l2_regularization': 0.1,
         'random_state': 42
     }
-    
     model_reg = HistGradientBoostingRegressor(**reg_params)
 
     print(f"使用参数: {reg_params}")
     print(f"使用模型: {model_reg}")
-
     print("=" * 70)
 
     # 训练分类模型（用于验证）
