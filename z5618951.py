@@ -13,29 +13,25 @@ from xgboost import XGBRegressor, XGBClassifier
 
 CATEGORICAL_COLS = ["category", "gender", "state", "job", "merchant", "city"]
 
-#    python z5618951.py train.csv test.csv 
+#    python z5618951hist.py train.csv test.csv 
 #    python e.py test.csv z5618951_regression.csv z5618951_classification.csv
 
 def add_advanced_features(df_clean):
-    """添加高级特征"""
+    """Add advanced engineered features."""
     
-    # 1. 更细粒度的时间特征
+    # 1. More fine-grained time features (cyclical encoding)
     df_clean['hour_sin'] = np.sin(2 * np.pi * df_clean['trans_hour'] / 24)
     df_clean['hour_cos'] = np.cos(2 * np.pi * df_clean['trans_hour'] / 24)
     df_clean['day_sin'] = np.sin(2 * np.pi * df_clean['trans_day'] / 31)
     df_clean['day_cos'] = np.cos(2 * np.pi * df_clean['trans_day'] / 31)
     
-    # 2. 交互特征
+    # 2. Interaction features
     df_clean['weekend_hour'] = df_clean['is_weekend'] * df_clean['trans_hour']
     df_clean['night_weekend'] = df_clean['is_night'] * df_clean['is_weekend']
     
-    # 3. 距离和位置交互
+    # 3. Distance & location interactions
     df_clean['lat_long_interaction'] = df_clean['lat'] * df_clean['long']
     df_clean['distance_pop_ratio'] = df_clean['customer_merchant_distance_km'] / (df_clean['city_pop'] + 1)
-    
-    # 4. 分组统计（如果数据量足够）
-    # merchant平均交易距离
-    # category平均交易距离
     
     return df_clean
 
