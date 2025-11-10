@@ -201,16 +201,15 @@ def main():
     X_test_reg = test_encoded[reg_feature_cols]
 
     model_reg = HistGradientBoostingRegressor(
-        max_iter=300,
+        max_iter=500,
         max_depth=8,
-        learning_rate=0.08,
-        l2_regularization=0.5,
-        min_samples_leaf=20,
-        max_leaf_nodes=31,
+        learning_rate=0.05,
+        l2_regularization=0.3,
+        min_samples_leaf=60,
+        max_leaf_nodes=None,
         random_state=42
     )
-    
-    
+  
     model_reg.fit(X_train_reg, y_train_reg)
     pred_reg_test = model_reg.predict(X_test_reg)
     pred_reg_test = np.maximum(pred_reg_test, 0)
@@ -251,7 +250,7 @@ def main():
         tree_method='hist',
         eval_metric='logloss'
     )
-    best_threshold = 0.72
+    best_threshold = 0.74
 
     model_clf.fit(X_train_clf, y_train_clf)
     pred_proba = model_clf.predict_proba(X_test_clf)[:, 1]
