@@ -136,7 +136,7 @@ def clean_and_prepare_data(df):
     for col in cat_cols:
         if col in df_clean.columns:
             df_clean[col] = df_clean[col].astype('category')
-    #df_clean = add_advanced_features(df_clean)
+    df_clean = add_advanced_features(df_clean)
 
     return df_clean
 
@@ -238,23 +238,23 @@ def main():
     fraud_count = y_train_clf.sum()
     normal_count = len(y_train_clf) - fraud_count
 
-    scale_pos_weight = (normal_count / fraud_count) * 1.3
+    scale_pos_weight = (normal_count / fraud_count) * 1.2
     print("scale_pos_weigth: ",scale_pos_weight)
     model_clf = XGBClassifier(
-        n_estimators=250,
+        n_estimators=400,
         max_depth=8,
-        learning_rate=0.16,
-        subsample=0.9,
-        colsample_bytree=0.9,
+        learning_rate=0.1,
+        subsample=0.85,
+        colsample_bytree=0.8,
         scale_pos_weight=scale_pos_weight,
         reg_alpha=0,
-        reg_lambda=0.5,
+        reg_lambda=1.0,
         random_state=42,
         n_jobs=-1,
         tree_method='hist',
         eval_metric='logloss'
     )
-    best_threshold = 0.72
+    best_threshold = 0.74
 
     model_clf.fit(X_train_clf, y_train_clf)
     pred_proba = model_clf.predict_proba(X_test_clf)[:, 1]
