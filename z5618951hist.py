@@ -209,7 +209,7 @@ def main():
         max_leaf_nodes=None,
         random_state=42
     )
-  
+
     model_reg.fit(X_train_reg, y_train_reg)
     pred_reg_test = model_reg.predict(X_test_reg)
     pred_reg_test = np.maximum(pred_reg_test, 0)
