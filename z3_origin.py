@@ -1,3 +1,4 @@
+# z3.py
 import pandas as pd
 import numpy as np
 import sys
@@ -14,7 +15,7 @@ CATEGORICAL_COLS = ["category", "gender", "state", "job", "merchant", "city"]
 
 
 def clean_and_prepare_data(df):
-    """è¶…çº§å¢žå¼ºçš„ç‰¹å¾å·¥ç¨‹ - ä¸“æ³¨æ¬ºè¯ˆæ£€æµ‹"""
+    """超级增强的特征工程 - 专注欺诈检测"""
     df_clean = df.copy()
 
     # 1. Convert datetime columns
@@ -31,12 +32,12 @@ def clean_and_prepare_data(df):
     df_clean['is_weekend'] = (df_clean['trans_dayofweek'] >= 5).astype(int)
 
 
-    # ðŸ†• æ–°å¢žæ—¶é—´ç‰¹å¾
+    # 🆕 新增时间特征
     df_clean['trans_day'] = df_clean['trans_date_trans_time'].dt.day
     df_clean['trans_quarter'] = df_clean['trans_date_trans_time'].dt.quarter
     df_clean['trans_year'] = df_clean['trans_date_trans_time'].dt.year
     
-    # ðŸ†• æ—¶æ®µç‰¹å¾ï¼ˆå¾ˆé‡è¦ï¼ï¼‰
+    # 🆕 时段特征（很重要！）
     df_clean['is_night'] = ((df_clean['trans_hour'] >= 22) | 
                             (df_clean['trans_hour'] <= 6)).astype(int)
     df_clean['is_business_hours'] = ((df_clean['trans_hour'] >= 9) & 
@@ -58,13 +59,13 @@ def clean_and_prepare_data(df):
         df_clean['lat'], df_clean['long'], df_clean['merch_lat'], df_clean['merch_long']
     )
   
-    # ðŸ†• è·ç¦»ç›¸å…³ç‰¹å¾ï¼ˆé‡è¦ï¼ï¼‰
+    # 🆕 距离相关特征（重要！）
     df_clean['distance_log'] = np.log1p(df_clean['customer_merchant_distance_km'])
     df_clean['distance_squared'] = df_clean['customer_merchant_distance_km'] ** 2
     df_clean['is_local_transaction'] = (df_clean['customer_merchant_distance_km'] < 10).astype(int)
     df_clean['is_very_far'] = (df_clean['customer_merchant_distance_km'] > 200).astype(int)
     
-    # ðŸ†• äººå£ç‰¹å¾ï¼ˆé‡è¦ï¼ï¼‰
+    # 🆕 人口特征（重要！）
     df_clean['city_pop_log'] = np.log1p(df_clean['city_pop'])
     df_clean['city_pop_sqrt'] = np.sqrt(df_clean['city_pop'])
     df_clean['is_big_city'] = (df_clean['city_pop'] > 100000).astype(int)
@@ -90,7 +91,7 @@ def clean_and_prepare_data(df):
 
 
 def encode_features(df, is_train=True, encoders=None):
-    """ç‰¹å¾ç¼–ç """
+    """特征编码"""
     df_encoded = df.copy()
 
     if is_train:
@@ -130,23 +131,23 @@ def main():
     print("ML Pipeline - No SMOTE, Focus on Real Patterns")
     print("=" * 70)
 
-    # æ•°æ®åŠ è½½
-    print("\nåŠ è½½æ•°æ®...")
+    # 数据加载
+    print("\n加载数据...")
     train_df = pd.read_csv(train_path)
     test_df = pd.read_csv(test_path)
     print(f"Training set: {len(train_df):,} rows")
     print(f"Test set: {len(test_df):,} rows")
 
-    print("\nè¶…çº§ç‰¹å¾å·¥ç¨‹...")
+    print("\n超级特征工程...")
     train_clean = clean_and_prepare_data(train_df)
     test_clean = clean_and_prepare_data(test_df)
 
-    print("ç¼–ç ç‰¹å¾...")
+    print("编码特征...")
     train_encoded, encoders = encode_features(train_clean, is_train=True)
     test_encoded, _ = encode_features(test_clean, is_train=False, encoders=encoders)
 
     # ============================================================
-    # Part II - å›žå½’ä»»åŠ¡
+    # Part II - 回归任务
     # ============================================================
     print("\n" + "=" * 70)
     print("Part II: Regression")
@@ -161,7 +162,7 @@ def main():
     y_train_reg = train_encoded["amt"]
     X_test_reg = test_encoded[reg_feature_cols]
 
-    print(f"ç‰¹å¾æ•°é‡: {len(reg_feature_cols)}")
+    print(f"特征数量: {len(reg_feature_cols)}")
 
     model_reg = HistGradientBoostingRegressor(
         max_iter=200,
@@ -182,10 +183,10 @@ def main():
     
     y_test_reg = test_encoded["amt"]
     rmse = np.sqrt(mean_squared_error(y_test_reg, pred_reg_test))
-    print(f"âœ“ RMSE: ${rmse:.2f}")
+    print(f"✓ RMSE: ${rmse:.2f}")
 
     # ============================================================
-    # Part III - åˆ†ç±»ä»»åŠ¡ï¼ˆæ— SMOTEï¼‰
+    # Part III - 分类任务（无SMOTE）
     # ============================================================
     print("\n" + "=" * 70)
     print("Part III: Classification (No SMOTE)")
@@ -199,27 +200,27 @@ def main():
     y_train_clf = train_encoded["is_fraud"]
     X_test_clf = test_encoded[clf_feature_cols]
 
-    print(f"ç‰¹å¾æ•°é‡: {len(clf_feature_cols)}")
-    print(f"è®­ç»ƒé›†: {len(X_train_clf):,} æ ·æœ¬")
-    print(f"æ¬ºè¯ˆæ¯”ä¾‹: {y_train_clf.mean()*100:.2f}%")
+    print(f"特征数量: {len(clf_feature_cols)}")
+    print(f"训练集: {len(X_train_clf):,} 样本")
+    print(f"欺诈比例: {y_train_clf.mean()*100:.2f}%")
 
-    # è®¡ç®—class weight - å…³é”®ï¼
+    # 计算class weight - 关键！
     fraud_count = y_train_clf.sum()
     normal_count = len(y_train_clf) - fraud_count
     weight_ratio = normal_count / fraud_count
     
-    print(f"\nç±»åˆ«æƒé‡æ¯”ä¾‹: 1:{weight_ratio:.1f} (æ­£å¸¸:æ¬ºè¯ˆ)")
+    print(f"\n类别权重比例: 1:{weight_ratio:.1f} (正常:欺诈)")
 
-    # ä½¿ç”¨RandomForestä½†ä¼˜åŒ–å‚æ•°
-    print("\nè®­ç»ƒRandomForestï¼ˆä¼˜åŒ–å‚æ•°ï¼‰...")
+    # 使用RandomForest但优化参数
+    print("\n训练RandomForest（优化参数）...")
     
     model_clf = RandomForestClassifier(
-        n_estimators=300,         # å¢žåŠ æ ‘æ•°é‡
-        max_depth=25,             # å¢žåŠ æ·±åº¦
-        min_samples_split=2,      # å…è®¸æ›´ç»†åˆ†
-        min_samples_leaf=1,       # å…è®¸æ›´å°çš„å¶èŠ‚ç‚¹
+        n_estimators=300,         # 增加树数量
+        max_depth=25,             # 增加深度
+        min_samples_split=2,      # 允许更细分
+        min_samples_leaf=1,       # 允许更小的叶节点
         max_features='sqrt',
-        class_weight={0: 1, 1: weight_ratio * 0.5},  # ç»™æ¬ºè¯ˆç±»æ›´é«˜æƒé‡
+        class_weight={0: 1, 1: weight_ratio * 0.5},  # 给欺诈类更高权重
         random_state=42,
         n_jobs=-1,
         bootstrap=True,
@@ -227,21 +228,21 @@ def main():
     )
     
     model_clf.fit(X_train_clf, y_train_clf)
-    print(f"âœ“ è®­ç»ƒå®Œæˆ (OOB Score: {model_clf.oob_score_:.4f})")
+    print(f"✓ 训练完成 (OOB Score: {model_clf.oob_score_:.4f})")
 
-    # é¢„æµ‹
-    print("\nç”Ÿæˆé¢„æµ‹...")
+    # 预测
+    print("\n生成预测...")
     pred_proba = model_clf.predict_proba(X_test_clf)[:, 1]
     
-    # æµ‹è¯•é˜ˆå€¼
+    # 测试阈值
     y_test_clf = test_encoded["is_fraud"]
     
-    print("\nå¯»æ‰¾æœ€ä½³é˜ˆå€¼...")
+    print("\n寻找最佳阈值...")
     best_threshold = 0.5
     best_f1 = 0
     threshold_results = []
     
-    # æ‰©å¤§é˜ˆå€¼èŒƒå›´ï¼Œæ›´ç»†ç²’åº¦
+    # 扩大阈值范围，更细粒度
     for threshold in np.arange(0.05, 0.71, 0.05):
         pred_temp = (pred_proba >= threshold).astype(int)
         f1_temp = f1_score(y_test_clf, pred_temp, average='macro')
@@ -251,33 +252,33 @@ def main():
             best_f1 = f1_temp
             best_threshold = threshold
         
-        if threshold % 0.10 < 0.051:  # æ¯0.1æ˜¾ç¤ºä¸€æ¬¡
+        if threshold % 0.10 < 0.051:  # 每0.1显示一次
             print(f"  Threshold {threshold:.2f}: F1 Macro = {f1_temp:.4f}")
     
-    # æ˜¾ç¤ºæœ€å¥½çš„å‡ ä¸ªé˜ˆå€¼
+    # 显示最好的几个阈值
     threshold_results.sort(key=lambda x: x[1], reverse=True)
-    print(f"\nTop 3 é˜ˆå€¼:")
+    print(f"\nTop 3 阈值:")
     for i, (t, f1) in enumerate(threshold_results[:3], 1):
         print(f"  {i}. Threshold {t:.2f}: F1 = {f1:.4f}")
     
-    print(f"\nâœ“ ä½¿ç”¨é˜ˆå€¼: {best_threshold:.2f} (F1 Macro: {best_f1:.4f})")
+    print(f"\n✓ 使用阈值: {best_threshold:.2f} (F1 Macro: {best_f1:.4f})")
     
     pred_clf_test = (pred_proba >= best_threshold).astype(int)
 
-    print(f"\né¢„æµ‹ç»Ÿè®¡:")
-    print(f"  é¢„æµ‹ä¸ºæ¬ºè¯ˆ: {pred_clf_test.sum():,} ({pred_clf_test.mean()*100:.2f}%)")
-    print(f"  çœŸå®žæ¬ºè¯ˆ: {y_test_clf.sum():,} ({y_test_clf.mean()*100:.2f}%)")
+    print(f"\n预测统计:")
+    print(f"  预测为欺诈: {pred_clf_test.sum():,} ({pred_clf_test.mean()*100:.2f}%)")
+    print(f"  真实欺诈: {y_test_clf.sum():,} ({y_test_clf.mean()*100:.2f}%)")
 
     classification_output = pd.DataFrame({
         "trans_num": test_encoded["trans_num"],
         "is_fraud": pred_clf_test
     })
     classification_output.to_csv("z5618951_classification.csv", index=False)
-    print(f"\nâœ“ z5618951_classification.csv")
+    print(f"\n✓ z5618951_classification.csv")
 
-    # æœ€ç»ˆè¯„ä¼°
+    # 最终评估
     print("\n" + "=" * 70)
-    print("æœ€ç»ˆè¯„ä¼°")
+    print("最终评估")
     print("=" * 70)
 
     from sklearn.metrics import precision_recall_fscore_support, confusion_matrix
@@ -286,40 +287,40 @@ def main():
         y_test_clf, pred_clf_test, average=None
     )
     
-    print(f"\nClass 0 (æ­£å¸¸):")
+    print(f"\nClass 0 (正常):")
     print(f"  Precision: {precision[0]:.4f}, Recall: {recall[0]:.4f}, F1: {f1_per_class[0]:.4f}")
     
-    print(f"\nClass 1 (æ¬ºè¯ˆ) â† å…³é”®:")
+    print(f"\nClass 1 (欺诈) ← 关键:")
     print(f"  Precision: {precision[1]:.4f}, Recall: {recall[1]:.4f}, F1: {f1_per_class[1]:.4f}")
     
     f1_macro = f1_score(y_test_clf, pred_clf_test, average='macro')
     
-    print(f"\nâžœ F1 Macro: {f1_macro:.4f}")
+    print(f"\n➜ F1 Macro: {f1_macro:.4f}")
     
-    # æ··æ·†çŸ©é˜µ
+    # 混淆矩阵
     cm = confusion_matrix(y_test_clf, pred_clf_test)
-    print(f"\næ··æ·†çŸ©é˜µ:")
-    print(f"               é¢„æµ‹")
-    print(f"             æ­£å¸¸  æ¬ºè¯ˆ")
-    print(f"çœŸå®ž æ­£å¸¸  {cm[0,0]:6d} {cm[0,1]:5d}")
-    print(f"     æ¬ºè¯ˆ  {cm[1,0]:6d} {cm[1,1]:5d}")
+    print(f"\n混淆矩阵:")
+    print(f"               预测")
+    print(f"             正常  欺诈")
+    print(f"真实 正常  {cm[0,0]:6d} {cm[0,1]:5d}")
+    print(f"     欺诈  {cm[1,0]:6d} {cm[1,1]:5d}")
     
     if f1_macro >= 0.97:
         score = 5.0
-        print(f"\nâœ“ ä¼°è®¡åˆ†æ•°: {score:.2f}/5.0 ðŸŽ‰")
+        print(f"\n✓ 估计分数: {score:.2f}/5.0 🎉")
     elif f1_macro >= 0.85:
         score = ((f1_macro - 0.85) / 0.12) * 5
-        print(f"\nâš  ä¼°è®¡åˆ†æ•°: {score:.2f}/5.0")
+        print(f"\n⚠ 估计分数: {score:.2f}/5.0")
     else:
         score = 0.0
-        print(f"\nâœ— ä¼°è®¡åˆ†æ•°: {score:.2f}/5.0")
+        print(f"\n✗ 估计分数: {score:.2f}/5.0")
 
     print("\n" + "=" * 70)
-    print("æ€»ç»“")
+    print("总结")
     print("=" * 70)
     print(f"RMSE: ${rmse:.2f}")
     print(f"F1 Macro: {f1_macro:.4f}")
-    print(f"ä¼°è®¡åˆ†æ•°: {score:.2f}/5.0")
+    print(f"估计分数: {score:.2f}/5.0")
     print("=" * 70)
 
 
