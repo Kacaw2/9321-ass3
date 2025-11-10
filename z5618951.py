@@ -36,7 +36,7 @@ def add_advanced_features(df_clean):
     return df_clean
 
 def clean_and_prepare_data(df):
-    """特征工程"""
+    """Feature engineering and preprocessing."""
     df_clean = df.copy()
 
     # 1. Convert datetime columns
@@ -138,7 +138,7 @@ def clean_and_prepare_data(df):
 
 
 def encode_features(df, is_train=True, encoders=None):
-    """特征编码"""
+    """features encoding"""
     df_encoded = df.copy()
 
     if is_train:
