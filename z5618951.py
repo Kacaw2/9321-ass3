@@ -16,6 +16,29 @@ CATEGORICAL_COLS = ["category", "gender", "state", "job", "merchant", "city"]
 #    python z5618951.py train.csv test.csv 
 #    python e.py test.csv z5618951_regression.csv z5618951_classification.csv
 
+def add_advanced_features(df_clean):
+    """添加高级特征"""
+    
+    # 1. 更细粒度的时间特征
+    df_clean['hour_sin'] = np.sin(2 * np.pi * df_clean['trans_hour'] / 24)
+    df_clean['hour_cos'] = np.cos(2 * np.pi * df_clean['trans_hour'] / 24)
+    df_clean['day_sin'] = np.sin(2 * np.pi * df_clean['trans_day'] / 31)
+    df_clean['day_cos'] = np.cos(2 * np.pi * df_clean['trans_day'] / 31)
+    
+    # 2. 交互特征
+    df_clean['weekend_hour'] = df_clean['is_weekend'] * df_clean['trans_hour']
+    df_clean['night_weekend'] = df_clean['is_night'] * df_clean['is_weekend']
+    
+    # 3. 距离和位置交互
+    df_clean['lat_long_interaction'] = df_clean['lat'] * df_clean['long']
+    df_clean['distance_pop_ratio'] = df_clean['customer_merchant_distance_km'] / (df_clean['city_pop'] + 1)
+    
+    # 4. 分组统计（如果数据量足够）
+    # merchant平均交易距离
+    # category平均交易距离
+    
+    return df_clean
+
 def clean_and_prepare_data(df):
     """特征工程"""
     df_clean = df.copy()
@@ -113,6 +136,7 @@ def clean_and_prepare_data(df):
     for col in cat_cols:
         if col in df_clean.columns:
             df_clean[col] = df_clean[col].astype('category')
+    #df_clean = add_advanced_features(df_clean)
 
     return df_clean
 
@@ -177,13 +201,14 @@ def main():
     X_test_reg = test_encoded[reg_feature_cols]
 
     model_reg = XGBRegressor(
-        n_estimators=300,
-        max_depth=8,
-        learning_rate=0.1,
-        subsample=0.8,
-        colsample_bytree=0.9,
-        reg_alpha=0.05,
+        n_estimators=150,
+        max_depth=6,
+        learning_rate=0.05,
+        subsample=0.85,
+        colsample_bytree=0.8,
+        reg_alpha=0.01,
         reg_lambda=0.8,
+        min_child_weight=3,
         random_state=42,
         n_jobs=-1,
         tree_method='hist'
@@ -212,24 +237,24 @@ def main():
 
     fraud_count = y_train_clf.sum()
     normal_count = len(y_train_clf) - fraud_count
-    scale_pos_weight = (normal_count / fraud_count) * 1
-  
+
+    scale_pos_weight = (normal_count / fraud_count) * 1.3
+    print("scale_pos_weigth: ",scale_pos_weight)
     model_clf = XGBClassifier(
-        n_estimators=400,
-        max_depth=10,
-        learning_rate=0.2,
+        n_estimators=250,
+        max_depth=8,
+        learning_rate=0.16,
         subsample=0.9,
-        colsample_bytree=0.85,
+        colsample_bytree=0.9,
         scale_pos_weight=scale_pos_weight,
-        reg_alpha=0.1,
+        reg_alpha=0,
         reg_lambda=0.5,
         random_state=42,
         n_jobs=-1,
         tree_method='hist',
         eval_metric='logloss'
     )
-    
-    best_threshold = 0.55
+    best_threshold = 0.72
 
     model_clf.fit(X_train_clf, y_train_clf)
     pred_proba = model_clf.predict_proba(X_test_clf)[:, 1]
